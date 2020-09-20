@@ -2,13 +2,16 @@ package com.github.amirsassi.cards.game.api.service;
 
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.Random;
+import java.util.stream.Collectors;
 
 import com.github.amirsassi.cards.game.api.domain.Card;
 import com.github.amirsassi.cards.game.api.domain.Deck;
+import com.github.amirsassi.cards.game.api.domain.FaceValue;
 import com.github.amirsassi.cards.game.api.domain.Game;
 import com.github.amirsassi.cards.game.api.domain.Player;
 import com.github.amirsassi.cards.game.api.domain.Suit;
@@ -22,16 +25,19 @@ public class GameServiceImpl
 
     private final List<Game> games = new ArrayList<>();
 
+    private static final Random RANDOM = new Random();
+
     private static final int MAX_CARDS = 52;
 
     @Override
     public void createGame(
         final Game pGame)
-        throws GameAlreadyExistsException,
-        GameNotFoundException {
+        throws GameAlreadyExistsException {
 
-        final Game game = findGameById(pGame.getGameId());
-        if (game != null) {
+        final Optional<Game> foundedGame =
+            this.games.stream().filter(game -> game.getGameId().equals(pGame.getGameId())).findFirst();
+
+        if (foundedGame.isPresent()) {
             throw new GameAlreadyExistsException(pGame.getGameId());
         } else {
             this.games.add(pGame);
@@ -110,13 +116,6 @@ public class GameServiceImpl
     }
 
     @Override
-    public List<Card> getRmainingCards(
-        final Integer gameId) {
-
-        return null;
-    }
-
-    @Override
     public void addDeckToGameDeck(
         final Integer gameId,
         final Deck deck)
@@ -163,33 +162,69 @@ public class GameServiceImpl
     }
 
     @Override
-    public Map<Suit, Integer> getUndealtCards(
+    public Map<Suit, Long> getUndealtCards(
         final Integer gameId)
         throws GameNotFoundException {
 
-        final EnumMap<Suit, Integer> cards = new EnumMap<>(Suit.class);
+        final List<Card> cards = new ArrayList<>();
+        final Game game = findGameById(gameId);
+        final List<Deck> decks = game.getDecks();
+
+        for (final Deck deck : decks) {
+            cards.addAll(deck.getCards());
+        }
+
+        return cards.stream().collect(Collectors.groupingBy(Card::getSuit, Collectors.counting()));
+    }
+
+    @Override
+    public Map<Suit, Map<FaceValue, List<Card>>> getSortedRemainingUndealtCards(
+        final Integer gameId)
+        throws GameNotFoundException {
+
+        final List<Card> cards = new ArrayList<>();
+        final Game game = findGameById(gameId);
+        final List<Deck> decks = game.getDecks();
+
+        for (final Deck deck : decks) {
+            cards.addAll(deck.getCards());
+        }
+
+        return cards.stream().collect(Collectors.groupingBy(Card::getSuit, Collectors.groupingBy(Card::getFaceValue)));
+
+    }
+
+    @Override
+    public void shuffle(
+        final Integer gameId)
+        throws GameNotFoundException {
 
         final Game game = findGameById(gameId);
         final List<Deck> decks = game.getDecks();
 
         for (final Deck deck : decks) {
-            final List<Card> deckCards = deck.getCards();
+
+            final List<Card> cards = deck.getCards();
+
+            if (cards != null && !cards.isEmpty()) {
+                final int size = cards.size();
+
+                for (int i = 0; i < size; i++) {
+                    final int newIndex = i + RANDOM.nextInt(size - i);
+                    swap(cards, i, newIndex);
+                }
+            }
         }
-
-        return cards;
     }
 
-    @Override
-    public Map<Card, Integer> getSortedRemainingUndealtCards(
-        final Integer gameId) {
+    private <T> void swap(
+        final List<T> list,
+        final int index,
+        final int value) {
 
-        return null;
-    }
-
-    @Override
-    public void shuffle(
-        final Integer gameId) {
-
+        final T objectContent = list.get(index);
+        list.set(index, list.get(value));
+        list.set(value, objectContent);
     }
 
     private Player getPlayer(
@@ -201,7 +236,7 @@ public class GameServiceImpl
             .orElseThrow(() -> new PlayerNotFoundException(playerId));
     }
 
-    private Game findGameById(
+    public Game findGameById(
         final Integer gameId)
         throws GameNotFoundException {
 
